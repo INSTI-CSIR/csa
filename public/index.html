@@ -1,0 +1,189 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSA Advisor</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8 text-center">Climate-Smart Agriculture Advisor</h1>
+        
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+            <form id="csaForm" class="space-y-6">
+                <!-- Ecological Zone -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Ecological Zone</label>
+                    <select id="zone" name="zone" required class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Select a zone...</option>
+                    </select>
+                </div>
+
+                <!-- Climate Risks -->
+                <div id="risksSection" class="hidden">
+                    <h3 class="text-lg font-medium text-gray-900">Climate Risks</h3>
+                    <div id="risksList" class="mt-2 space-y-2">
+                        <!-- Risks will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Value Chain -->
+                <div id="valueChainSection" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700">Primary Value Chain</label>
+                    <select id="valueChain" name="valueChain" required class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Select value chain...</option>
+                    </select>
+                </div>
+
+                <!-- Investment Level -->
+                <div id="investmentSection" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700">Investment Level</label>
+                    <select id="investment" name="investment" required class="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <option value="">Select investment level...</option>
+                        <option value="Low">Low Investment</option>
+                        <option value="Intermediate">Intermediate Investment</option>
+                        <option value="Medium">Medium Investment</option>
+                        <option value="Full">Full Investment</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">
+                    Generate Recommendations
+                </button>
+            </form>
+
+            <!-- Results Section -->
+            <div id="results" class="hidden mt-8 space-y-4">
+                <h2 class="text-xl font-bold text-gray-900">Recommendations</h2>
+                <div id="recommendationContent" class="space-y-4">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Load ecological zones
+            const zones = await fetch('/api/zones').then(r => r.json());
+            const zoneSelect = document.getElementById('zone');
+            zones.forEach(zone => {
+                const option = document.createElement('option');
+                option.value = zone;
+                option.textContent = zone;
+                zoneSelect.appendChild(option);
+            });
+
+            // Zone change handler
+            zoneSelect.addEventListener('change', async () => {
+                const zone = zoneSelect.value;
+                if (!zone) return;
+
+                // Load risks
+                const risks = await fetch(`/api/risks/${zone}`).then(r => r.json());
+                const risksList = document.getElementById('risksList');
+                risksList.innerHTML = '';
+                risks.forEach(risk => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <label class="block">
+                            <span class="text-sm text-gray-700">${risk}</span>
+                            <input type="range" name="risk_${risk}" min="0" max="5" value="0" 
+                                   class="mt-1 block w-full" data-risk="${risk}">
+                            <span class="text-xs text-gray-500">Severity: <span class="severity">0</span></span>
+                        </label>
+                    `;
+                    risksList.appendChild(div);
+                });
+
+                // Load value chains
+                const valueChains = await fetch(`/api/value-chains/${zone}`).then(r => r.json());
+                const valueChainSelect = document.getElementById('valueChain');
+                valueChainSelect.innerHTML = '<option value="">Select value chain...</option>';
+                valueChains.forEach(chain => {
+                    const option = document.createElement('option');
+                    option.value = chain;
+                    option.textContent = chain;
+                    valueChainSelect.appendChild(option);
+                });
+
+                // Show all sections
+                document.getElementById('risksSection').classList.remove('hidden');
+                document.getElementById('valueChainSection').classList.remove('hidden');
+                document.getElementById('investmentSection').classList.remove('hidden');
+            });
+
+            // Form submission
+            document.getElementById('csaForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const risks = {};
+                document.querySelectorAll('#risksList input[type="range"]').forEach(input => {
+                    risks[input.dataset.risk] = input.value;
+                });
+
+                const data = {
+                    zone: document.getElementById('zone').value,
+                    valueChain: document.getElementById('valueChain').value,
+                    investment: document.getElementById('investment').value,
+                    risks: risks
+                };
+
+                const recommendations = await fetch('/api/recommendations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                }).then(r => r.json());
+
+                // Display results
+                const resultsDiv = document.getElementById('results');
+                const content = document.getElementById('recommendationContent');
+                
+                content.innerHTML = `
+                    <div class="bg-gray-50 p-4 rounded-md">
+                        <h3 class="font-medium">Farm Profile</h3>
+                        <p>Ecological Zone: ${recommendations.profile.ecology}</p>
+                        <p>Value Chain: ${recommendations.profile.value_chain}</p>
+                        <p>Investment Level: ${recommendations.profile.investment}</p>
+                        <p>Risk Score: ${recommendations.profile.risk_score}</p>
+                    </div>
+
+                    <div>
+                        <h3 class="font-medium">Recommended Practices</h3>
+                        <ul class="list-disc pl-5 mt-2">
+                            ${recommendations.practices.map(p => `<li>${p}</li>`).join('')}
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 class="font-medium">Climate Information Services</h3>
+                        <ul class="list-disc pl-5 mt-2">
+                            ${recommendations.cis_services.map(s => `<li>${s}</li>`).join('')}
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 class="font-medium">Optional Add-ons</h3>
+                        <ul class="list-disc pl-5 mt-2">
+                            ${recommendations.addons.map(a => `<li>${a}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+
+                resultsDiv.classList.remove('hidden');
+            });
+
+            // Update severity displays for risks
+            document.addEventListener('input', (e) => {
+                if (e.target.type === 'range') {
+                    e.target.parentElement.querySelector('.severity').textContent = e.target.value;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
